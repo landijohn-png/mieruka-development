@@ -40,13 +40,14 @@ def main(argv=None):
     r.add_argument("--out", required=True)
     r.add_argument("--overrides", default=str(ROOT / "config" / "personas.toml"))
     r.add_argument("--top", type=int, default=100)
+    r.add_argument("--seeds", default=str(ROOT / "config" / "seeds.toml"))
     a = ap.parse_args(argv)
 
     if a.cmd == "scan":
         limit_memory(a.max_memory_mb)
         scan.scan(a.years, Matcher(load_seeds(a.seeds)), a.out, max_zips=a.max_zips)
     else:
-        res = report.build(a.out, a.overrides, a.top)
+        res = report.build(a.out, a.overrides, a.top, a.seeds)
         print(f"{res['funders']} funders from {res['grants']} grants; {res['to_review']} grants waiting for review "
               f"in {Path(a.out) / 'review.csv'}")
 

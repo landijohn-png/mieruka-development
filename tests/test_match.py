@@ -45,3 +45,25 @@ def test_partial_name_goes_to_review_and_unrelated_is_ignored():
 def test_quick_byte_check():
     mt = Matcher(seeds())
     assert mt.might_match(b"...CHARITY NAVIGATOR INC...") and not mt.might_match(b"LOCAL PANTRY")
+
+
+def test_rules_from_the_first_full_scan(tmp_path):
+    from pathlib import Path
+    from funders.match import load_seeds
+    mt = Matcher(load_seeds(Path(__file__).resolve().parents[1] / "config" / "seeds.toml"))
+    # unique names count wherever the address is
+    assert mt.match("CHARITY NAVIGATOR", "", "IA").status == "matched"
+    assert mt.match("CANDID", "", "OH").status == "matched"
+    # pass-through products and look-alikes don't count
+    assert mt.match("CHARITY NAVIGATOR GIVING BASKET", "", "NJ") is None
+    assert mt.match("SIERRA HEALTH FOUNDATION CENTER FOR HEALTH PROGRAM", "45-5282243", "CA") is None
+    assert mt.match("GIVEWELL COMMUNITY FOUNDATION INC", "", "FL") is None
+    # longer names that are clearly the organization
+    assert mt.match("PROPUBLICA ILLINOIS", "", "NY").status == "matched"
+    assert mt.match("THE CLEAR FUND DBA GIVEWELL", "", "CA").status == "matched"
+    assert mt.match("CANDID (FORMERLY FOUNDATION CENTER)", "", "NY").status == "matched"
+    # Aspen only for nonprofit-data work, by tax ID or name
+    assert mt.match("ASPEN INSTITUTE", "84-0399006", "DC", "GENERAL SUPPORT") is None
+    assert mt.match("ASPEN INSTITUTE", "84-0399006", "DC", "OPEN 990 DATA").status == "matched"
+    # a same-name charity in another state still goes to a person
+    assert mt.match("FAST FORWARD", "", "SC").status == "review"

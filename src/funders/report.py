@@ -16,7 +16,7 @@ import tomllib
 from collections import defaultdict
 from pathlib import Path
 
-from funders.match import norm_ein, norm_name
+from funders.match import Matcher, load_seeds, norm_ein, norm_name
 
 REVIEW_FIELDS = ["decision", "seed_name", "reason", "recipient", "recipient_ein", "recipient_state", "amount",
                  "purpose", "funder_name", "funder_ein", "tax_year", "source"]
@@ -25,13 +25,16 @@ DAF_OR_WEALTH = ("CHARITABLE GIFT FUND", "CHARITABLE ENDOWMENT PROGRAM", "SCHWAB
                  "DONOR ADVISED", "NATIONAL PHILANTHROPIC TRUST", "AYCO", "AMERICAN ENDOWMENT FOUNDATION",
                  "RENAISSANCE CHARITABLE", "GOLDMAN SACHS PHILANTHROPY", "MORGAN STANLEY", "JPMORGAN", "MERRILL",
                  "RAYMOND JAMES", "EDWARD JONES", "UBS ", "BNY MELLON", "NORTHERN TRUST", "WELLS FARGO",
-                 "BANK OF AMERICA", "CHARLES SCHWAB", "FIDELITY", "VANGUARD", "T ROWE PRICE", "PNC ")
+                 "BANK OF AMERICA", "CHARLES SCHWAB", "FIDELITY", "VANGUARD", "T ROWE PRICE", "PNC ",
+                 "IMPACTASSETS", "TIDES FOUNDATION", "SILICON VALLEY COMMUNITY FOUNDATION", "US CHARITABLE GIFT TRUST",
+                 "NATIONAL CHRISTIAN FOUNDATION", "DAFFY CHARITABLE FUND", "FOUNDATION FOR THE CAROLINAS")
 # Platforms that forward gifts recommended by employees or online donors. The giving decision isn't
 # theirs, so they are listed last as "pass-through", not as prospects.
 PASS_THROUGH = ("AMERICAN ONLINE GIVING FOUNDATION", "CHARITIES AID FOUNDATION AMERICA", "PAYPAL GIVING FUND",
                 "NETWORK FOR GOOD", "BENEVITY", "YOURCAUSE", "CYBERGRANTS", "GIVE LIVELY", "DAFFY", "FIDELITY CHARITABLE PAYMENT",
                 "BRIGHT FUNDS", "CHARITYVEST", "GLOBALGIVING", "FRONTSTREAM", "UNITED WAY WORLDWIDE", "BLACKBAUD GIVING FUND",
-                "MIGHTYCAUSE", "GOFUNDME", "EVERY ORG", "CAF AMERICA", "GIVING BLOCK", "ENDAOMENT")
+                "MIGHTYCAUSE", "GOFUNDME", "EVERY ORG", "CAF AMERICA", "GIVING BLOCK", "ENDAOMENT",
+                "PAYPAL CHARITABLE GIVING FUND", "BENEVITY CAUSES", "AMAZONSMILE")
 CORPORATE = ("GOOGLE", "TWILIO", "SALESFORCE", "DELL ", "HEWLETT PACKARD", "OKTA", "SERVICENOW", "BLACKROCK",
              "MICROSOFT", "CISCO", "INTEL ", "ORACLE", "ADOBE", "IBM ", "AMAZON", "META PLATFORMS", "COMCAST",
              "CORPORATE", "COMPANY FOUNDATION", "CORPORATION FOUNDATION")
@@ -58,7 +61,11 @@ def _read_decisions(path: Path) -> dict[tuple, str]:
     return out
 
 
-def persona_for(name: str, state: str, return_type: str, total_paid: float, overrides: dict[str, str], ein: str) -> str:
+EFFECTIVE_GIVING = {"GiveWell", "Giving What We Can USA", "Charity Navigator"}
+
+
+def persona_for(name: str, state: str, return_type: str, total_paid: float, overrides: dict[str, str], ein: str,
+                seeds_funded: set[str] = frozenset()) -> str:
     if ein in overrides:
         return overrides[ein]
     n = f" {norm_name(name)} "
@@ -72,7 +79,9 @@ def persona_for(name: str, state: str, return_type: str, total_paid: float, over
         return "1"
     if return_type == "990PF" and total_paid >= 25_000_000:
         return "2"
-    return ""      # a person decides (2 or 5)
+    if return_type == "990PF" and seeds_funded and seeds_funded <= EFFECTIVE_GIVING:
+        return "5"     # a family foundation that gives only to donor-guidance organizations
+    return ""      # a person decides
 
 
 def priority_parts(f: dict) -> dict[str, int]:
@@ -87,9 +96,25 @@ def priority_parts(f: dict) -> dict[str, int]:
     return {"breadth": breadth, "recency": recency, "size": size, "geography": geo, "openness": openness}
 
 
-def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: int = 100) -> dict:
+def rematch(grants: list[dict], seeds_path: str | Path) -> list[dict]:
+    """Check every stored grant again with the current seeds.toml, so better rules apply to grants
+    already found without scanning the IRS archives again. (Tighter rules only ever remove matches;
+    a brand-new comparable needs a new scan.)"""
+    m = Matcher(load_seeds(seeds_path))
+    out = []
+    for r in grants:
+        hit = m.match(r["recipient"], r.get("recipient_ein", ""), r.get("recipient_state", ""), r.get("purpose", ""))
+        if hit:
+            out.append({**r, "status": hit.status, "reason": hit.reason, "seed": hit.seed.key, "seed_name": hit.seed.name})
+    return out
+
+
+def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: int = 100,
+          seeds_path: str | Path | None = None) -> dict:
     out = Path(out_dir)
     grants = _read_jsonl(out / "grants.jsonl")
+    if seeds_path and Path(seeds_path).exists():
+        grants = rematch(grants, seeds_path)
     returns = _read_jsonl(out / "funders.jsonl")
     overrides = {}
     if overrides_path and Path(overrides_path).exists():
@@ -146,7 +171,8 @@ def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: in
         total = sum(float(g["amount"] or 0) for g in f["grants"])
         biggest = max(f["grants"], key=lambda g: float(g["amount"] or 0))
         pre = lr.get("preselected_only")
-        persona = persona_for(f["name"], f["state"], lr.get("return_type", ""), lr.get("total_paid") or 0, overrides, e)
+        persona = persona_for(f["name"], f["state"], lr.get("return_type", ""), lr.get("total_paid") or 0, overrides, e,
+                              set(f["seeds"]))
         rows.append({
             "priority": 0 if persona == "pass-through" else sum(parts.values()),
             "funder": f["name"], "ein": f"{e[:2]}-{e[2:]}", "state": f["state"],

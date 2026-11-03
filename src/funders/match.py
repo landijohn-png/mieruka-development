@@ -39,19 +39,32 @@ class Seed:
     state: str = ""
     purpose_words: list[str] = field(default_factory=list)
     note: str = ""
+    unique: bool = False               # exact name counts wherever the recipient's address is
+    contains_ok: bool = False          # a longer name containing an alias counts (e.g. "ProPublica Illinois")
+    exact_only: set[str] = field(default_factory=set)    # aliases too generic to match inside longer names
+    exclude_words: list[str] = field(default_factory=list)
+    exclude_eins: set[str] = field(default_factory=set)
+    purpose_strict: bool = False       # a grant whose purpose doesn't fit doesn't count at all (no review)
 
 
 def load_seeds(path: str | Path) -> list[Seed]:
     data = tomllib.loads(Path(path).read_text())
     seeds = []
     for key, s in data.items():
-        aliases = [norm_name(a) for a in [s["name"], *s.get("aliases", [])]]
+        raw = [s["name"], *s.get("aliases", [])]
+        aliases = [norm_name(a.lstrip("=")) for a in raw]
         seeds.append(Seed(key=key, name=s["name"], persona=str(s.get("persona", "")),
                           aliases=list(dict.fromkeys(a for a in aliases if a)),
                           eins={norm_ein(e) for e in s.get("eins", []) if norm_ein(e)},
                           state=s.get("state", "").upper(),
                           purpose_words=[w.upper() for w in s.get("purpose_words", [])],
-                          note=s.get("note", "")))
+                          note=s.get("note", ""),
+                          unique=bool(s.get("unique", False)),
+                          contains_ok=bool(s.get("contains_ok", False)),
+                          exact_only={norm_name(a[1:]) for a in raw if a.startswith("=")},
+                          exclude_words=[norm_name(w) for w in s.get("exclude_words", []) if norm_name(w)],
+                          exclude_eins={norm_ein(e) for e in s.get("exclude_eins", []) if norm_ein(e)},
+                          purpose_strict=bool(s.get("purpose_strict", False))))
     return seeds
 
 
@@ -86,25 +99,42 @@ class Matcher:
     def match(self, recipient: str, recipient_ein: str = "", recipient_state: str = "",
               purpose: str = "") -> Match | None:
         ein = norm_ein(recipient_ein)
-        if ein and ein in self.by_ein:
-            return Match(self.by_ein[ein], "matched", "tax ID")
         n = norm_name(recipient)
+        padded = f" {n} "
+
+        def purpose_ok(s: Seed) -> bool:
+            return not s.purpose_words or any(w in purpose.upper() for w in s.purpose_words)
+
+        def excluded(s: Seed) -> bool:
+            return (ein and ein in s.exclude_eins) or any(f" {w} " in padded for w in s.exclude_words)
+
+        if ein and ein in self.by_ein:
+            s = self.by_ein[ein]
+            if not purpose_ok(s) and s.purpose_strict:
+                return None
+            if not purpose_ok(s):
+                return Match(s, "review", "purpose doesn't mention " + " / ".join(s.purpose_words[:3]).lower())
+            return Match(s, "matched", "tax ID")
         if not n:
             return None
-        padded = f" {n} "
         best = None
         for s in self.seeds:
+            if excluded(s) or (s.purpose_strict and not purpose_ok(s)):
+                continue
             for a in s.aliases:
                 if n == a:
                     if ein and s.eins:
                         return Match(s, "review", f"name matches but tax ID {ein} is not {s.name}'s")
-                    if s.purpose_words and not any(w in purpose.upper() for w in s.purpose_words):
+                    if not purpose_ok(s):
                         return Match(s, "review", "name matches; purpose doesn't mention "
                                      + " / ".join(s.purpose_words[:3]).lower())
-                    if s.state and recipient_state and recipient_state.upper() != s.state:
+                    if s.state and recipient_state and recipient_state.upper() != s.state and not s.unique:
                         return Match(s, "review", f"name matches; recipient is in {recipient_state}, "
                                      f"{s.name} is in {s.state}")
                     return Match(s, "matched", "name")
-                if len(a) >= 8 and f" {a} " in padded and best is None:
-                    best = Match(s, "review", f"name contains \"{a.title()}\"")
+                if best is None and a not in s.exact_only and len(a) >= 8 and f" {a} " in padded:
+                    if s.contains_ok and not (ein and s.eins) and purpose_ok(s):
+                        best = Match(s, "matched", f"name contains \"{a.title()}\"")
+                    else:
+                        best = Match(s, "review", f"name contains \"{a.title()}\"")
         return best
