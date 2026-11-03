@@ -3,13 +3,14 @@
     python -m funders scan --years 2023 2024 2025 --out data/funders
     python -m funders scan --years 2025 --max-zips 1 --out data/trial      # a quick trial on one archive
     python -m funders report --out data/funders
+    python -m funders contacts --out data/funders --top 250   # grants contacts, officers, phone, website
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from funders import report, scan
+from funders import contacts, report, scan
 from funders.match import Matcher, load_seeds
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,9 +42,14 @@ def main(argv=None):
     r.add_argument("--overrides", default=str(ROOT / "config" / "personas.toml"))
     r.add_argument("--top", type=int, default=100)
     r.add_argument("--seeds", default=str(ROOT / "config" / "seeds.toml"))
+    c = sub.add_parser("contacts", help="who to contact at each top funder, from its latest filing")
+    c.add_argument("--out", required=True)
+    c.add_argument("--top", type=int, default=250)
     a = ap.parse_args(argv)
 
-    if a.cmd == "scan":
+    if a.cmd == "contacts":
+        contacts.build(a.out, a.top)
+    elif a.cmd == "scan":
         limit_memory(a.max_memory_mb)
         scan.scan(a.years, Matcher(load_seeds(a.seeds)), a.out, max_zips=a.max_zips)
     else:

@@ -24,6 +24,9 @@ python -m funders report --out data/trial
 # full run: IRS publication years 2023 to 2025, every Form 990 and 990-PF nationwide
 nohup python -m funders scan --years 2025 2024 2023 --out data/funders > data/scan.log 2>&1 &
 python -m funders report --out data/funders
+
+# who to contact at the top 250: reads only each funder's latest filing (a few minutes)
+python -m funders contacts --out data/funders --top 250
 ```
 
 The scan reads each IRS archive front to back in 16 MB windows (nothing is saved but the grants
@@ -36,6 +39,8 @@ it finds) and remembers which archives are done, so it can be stopped and starte
 | `funders.csv` | Every funder of a comparable organization, highest priority first, with links to the filings |
 | `sweep_import.csv` | The top 100, as leads for the Sweep Console |
 | `review.csv` | Uncertain matches. Write `yes` or `no` in `decision`, then run `report` again |
+| `contacts.csv` | People at each funder: the grants contact a foundation names (phone, email, mailing address), the officer who signed, and officers, directors and trustees with titles. Officers' home addresses are never kept |
+| `funder_info.csv` | Each funder's phone, website, what to submit, deadlines, restrictions, and whether it funds only pre-selected organizations |
 | `recipient_eins.txt` | Tax IDs recipients filed under each comparable's name, to confirm in `config/seeds.toml` |
 
 ## How a grant counts
