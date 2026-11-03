@@ -15,6 +15,17 @@ from funders.match import Matcher, load_seeds
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def limit_memory(mb: int):
+    """Ask the system to refuse memory past this ceiling. Python then raises MemoryError for the one
+    return that needs too much, which the scan records and skips, instead of the whole run being killed."""
+    try:
+        import resource
+        _, hard = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (mb * 2**20, hard))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="funders", description="Find funders of organizations like Mieruka")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -23,6 +34,8 @@ def main(argv=None):
     s.add_argument("--out", required=True)
     s.add_argument("--seeds", default=str(ROOT / "config" / "seeds.toml"))
     s.add_argument("--max-zips", type=int, help="stop after this many archives per year (for a trial)")
+    s.add_argument("--max-memory-mb", type=int, default=1000,
+                   help="memory ceiling; a return needing more is skipped and listed, the run goes on (default 1000)")
     r = sub.add_parser("report", help="build the ranked funder list from scan results")
     r.add_argument("--out", required=True)
     r.add_argument("--overrides", default=str(ROOT / "config" / "personas.toml"))
@@ -30,6 +43,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.cmd == "scan":
+        limit_memory(a.max_memory_mb)
         scan.scan(a.years, Matcher(load_seeds(a.seeds)), a.out, max_zips=a.max_zips)
     else:
         res = report.build(a.out, a.overrides, a.top)

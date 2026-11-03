@@ -13,6 +13,8 @@ from typing import Iterable
 PF_GRANT = "GrantOrContributionPdDurYrGrp"     # Form 990-PF, Part XV line 3a
 SCHED_I_GRANT = "RecipientTable"               # Schedule I (Form 990), Part II
 GRANT_TAGS = (PF_GRANT.encode(), SCHED_I_GRANT.encode())
+KEEP_WHOLE = {PF_GRANT, SCHED_I_GRANT, "Filer"}    # read these only once complete
+FEED = 256 * 1024                                  # bytes handed to the XML parser at a time
 
 
 def _tag(el) -> str:
@@ -102,7 +104,6 @@ def read(chunks: Iterable[bytes], keep=lambda g: True) -> ReturnGrants:
                 out.tax_period_end = (el.text or "").strip()
             elif t == "ReturnHeader":
                 in_header = False
-                drop(el)
             return
         if t == PF_GRANT:
             g = Grant(recipient=_find_text(el, "BusinessNameLine1Txt", "RecipientPersonNm"),
@@ -111,7 +112,6 @@ def read(chunks: Iterable[bytes], keep=lambda g: True) -> ReturnGrants:
                       amount=_num(_find_text(el, "Amt")),
                       purpose=_find_text(el, "GrantOrContributionPurposeTxt"))
             _add(g)
-            drop(el)
         elif t == SCHED_I_GRANT:
             g = Grant(recipient=_find_text(el, "BusinessNameLine1Txt"),
                       recipient_ein=_find_text(el, "RecipientEIN"),
@@ -119,11 +119,8 @@ def read(chunks: Iterable[bytes], keep=lambda g: True) -> ReturnGrants:
                       amount=_num(_find_text(el, "CashGrantAmt")) + _num(_find_text(el, "NonCashAssistanceAmt")),
                       purpose=_find_text(el, "PurposeOfGrantTxt"))
             _add(g)
-            drop(el)
         elif t == "OnlyContriToPreselectedInd":
             out.preselected_only = (el.text or "").strip().upper() in {"X", "1", "TRUE"}
-        elif t in ("SupplementaryInformationGrp", "IRS990ScheduleI", "IRS990", "IRS990PF"):
-            drop(el)
 
     def _add(g: Grant):
         if g.amount:
@@ -133,17 +130,26 @@ def read(chunks: Iterable[bytes], keep=lambda g: True) -> ReturnGrants:
         if keep(g):
             out.grants.append(g)
 
+    inside = 0   # how many elements we keep whole (a grant, the filer) are open right now
+
     def drain():
+        nonlocal inside
         for event, el in parser.read_events():
             if event == "start":
                 stack.append(el)
+                if _tag(el) in KEEP_WHOLE:
+                    inside += 1
             else:
                 stack.pop()
                 handle(el)
+                if _tag(el) in KEEP_WHOLE:
+                    inside -= 1
+                if inside == 0:
+                    drop(el)     # read it, now forget it: memory stays at about one grant
 
     for chunk in chunks:
-        if chunk:
-            parser.feed(chunk)
+        for i in range(0, len(chunk or b""), FEED):
+            parser.feed(chunk[i:i + FEED])
             drain()
     parser.close()
     drain()

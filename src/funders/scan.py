@@ -17,7 +17,7 @@ from funders import grants as G
 from funders import irs
 from funders.match import Matcher
 
-BIG = 24 * 1024 * 1024    # returns larger than this (uncompressed) are parsed as a stream, no quick test
+BIG = 8 * 1024 * 1024     # returns larger than this (uncompressed) are parsed as a stream, no quick test
 EVERY = 5000              # log progress inside an archive every this many returns
 
 
@@ -77,9 +77,18 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
                         hits.append((g, hit))
                     return False
                 rg = G.read(chunks, keep=keep)
+            except MemoryError:
+                stats["failed"] += 1
+                chunks = raw = None
+                log(f"    skipped {m.object_id}: too large for the memory ceiling ({m.usize / 1e6:,.0f} MB unpacked)")
+                with (out / "skipped.txt").open("a") as f:
+                    f.write(f"{source}\ttoo large for memory\n")
+                continue
             except Exception as ex:   # one unreadable return never stops the run
                 stats["failed"] += 1
                 log(f"    can't read {m.name}: {ex}")
+                with (out / "skipped.txt").open("a") as f:
+                    f.write(f"{source}\t{ex}\n")
                 continue
             if not hits:
                 continue
