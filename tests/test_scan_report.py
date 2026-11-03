@@ -81,3 +81,10 @@ def test_large_returns_are_streamed(tmp_path, monkeypatch):
     monkeypatch.setattr(scan, "BIG", 100)       # every return counts as large: no quick test, parsed in chunks
     _, stats, _ = run(tmp_path)
     assert stats["matched"] == 3 and stats["parsed"] == 3
+
+
+def test_pass_through_platforms_go_last(tmp_path):
+    from funders.report import persona_for
+    assert persona_for("American Online Giving Foundation Inc", "DE", "990", 1e9, {}, "1") == "pass-through"
+    assert persona_for("Charities Aid Foundation America", "VA", "990", 1e8, {}, "1") == "pass-through"
+    assert persona_for("Meyer Memorial Trust", "OR", "990PF", 4e7, {}, "1") == "2"

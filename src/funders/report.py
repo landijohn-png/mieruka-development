@@ -26,6 +26,12 @@ DAF_OR_WEALTH = ("CHARITABLE GIFT FUND", "CHARITABLE ENDOWMENT PROGRAM", "SCHWAB
                  "RENAISSANCE CHARITABLE", "GOLDMAN SACHS PHILANTHROPY", "MORGAN STANLEY", "JPMORGAN", "MERRILL",
                  "RAYMOND JAMES", "EDWARD JONES", "UBS ", "BNY MELLON", "NORTHERN TRUST", "WELLS FARGO",
                  "BANK OF AMERICA", "CHARLES SCHWAB", "FIDELITY", "VANGUARD", "T ROWE PRICE", "PNC ")
+# Platforms that forward gifts recommended by employees or online donors. The giving decision isn't
+# theirs, so they are listed last as "pass-through", not as prospects.
+PASS_THROUGH = ("AMERICAN ONLINE GIVING FOUNDATION", "CHARITIES AID FOUNDATION AMERICA", "PAYPAL GIVING FUND",
+                "NETWORK FOR GOOD", "BENEVITY", "YOURCAUSE", "CYBERGRANTS", "GIVE LIVELY", "DAFFY", "FIDELITY CHARITABLE PAYMENT",
+                "BRIGHT FUNDS", "CHARITYVEST", "GLOBALGIVING", "FRONTSTREAM", "UNITED WAY WORLDWIDE", "BLACKBAUD GIVING FUND",
+                "MIGHTYCAUSE", "GOFUNDME", "EVERY ORG", "CAF AMERICA", "GIVING BLOCK", "ENDAOMENT")
 CORPORATE = ("GOOGLE", "TWILIO", "SALESFORCE", "DELL ", "HEWLETT PACKARD", "OKTA", "SERVICENOW", "BLACKROCK",
              "MICROSOFT", "CISCO", "INTEL ", "ORACLE", "ADOBE", "IBM ", "AMAZON", "META PLATFORMS", "COMCAST",
              "CORPORATE", "COMPANY FOUNDATION", "CORPORATION FOUNDATION")
@@ -56,6 +62,8 @@ def persona_for(name: str, state: str, return_type: str, total_paid: float, over
     if ein in overrides:
         return overrides[ein]
     n = f" {norm_name(name)} "
+    if any(f" {k} " in n for k in PASS_THROUGH):
+        return "pass-through"
     if any(f" {k.strip()} " in n or k in n for k in DAF_OR_WEALTH):
         return "4"
     if any(f" {k.strip()} " in n for k in CORPORATE):
@@ -138,10 +146,11 @@ def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: in
         total = sum(float(g["amount"] or 0) for g in f["grants"])
         biggest = max(f["grants"], key=lambda g: float(g["amount"] or 0))
         pre = lr.get("preselected_only")
+        persona = persona_for(f["name"], f["state"], lr.get("return_type", ""), lr.get("total_paid") or 0, overrides, e)
         rows.append({
-            "priority": sum(parts.values()),
+            "priority": 0 if persona == "pass-through" else sum(parts.values()),
             "funder": f["name"], "ein": f"{e[:2]}-{e[2:]}", "state": f["state"],
-            "persona": persona_for(f["name"], f["state"], lr.get("return_type", ""), lr.get("total_paid") or 0, overrides, e),
+            "persona": persona,
             "comparables_funded": len(f["seeds"]), "comparables": "; ".join(sorted(f["seeds"])),
             "total_to_comparables": round(total), "largest_grant": round(float(biggest["amount"] or 0)),
             "largest_grant_to": biggest["seed_name"], "latest_year": max(f["years"]),
@@ -152,7 +161,7 @@ def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: in
             "filings": " ".join(sorted(f["sources"])),
             "profile": f"https://projects.propublica.org/nonprofits/organizations/{e}",
         })
-    rows.sort(key=lambda r: (-r["priority"], -r["total_to_comparables"]))
+    rows.sort(key=lambda r: (r["persona"] == "pass-through", -r["priority"], -r["total_to_comparables"]))
     if rows:
         with (out / "funders.csv").open("w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=list(rows[0]))
@@ -161,7 +170,7 @@ def build(out_dir: str | Path, overrides_path: str | Path | None = None, top: in
         with (out / "sweep_import.csv").open("w", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(["Company", "State", "Persona", "Priority", "Notes", "Source"])
-            for r in rows[:top]:
+            for r in [r for r in rows if r["persona"] != "pass-through"][:top]:
                 note = (f"Funded {r['comparables']} (${r['total_to_comparables']:,} total, latest {r['latest_year']}). "
                         f"Median grant {('$' + format(r['median_grant_overall'], ',')) if r['median_grant_overall'] else 'unknown'}; "
                         f"accepts unsolicited: {r['accepts_unsolicited'] or 'n/a (public charity)'}.")
