@@ -31,5 +31,5 @@ def test_read_index_keeps_990_and_990pf_only():
     text = ("RETURN_ID,EIN,TAX_PERIOD,TAXPAYER_NAME,RETURN_TYPE,OBJECT_ID,XML_BATCH_ID\n"
             "1,12-3456789,202412,A,990PF,111,01a\n2,123456780,202412,B,990EZ,222,01a\n3,1,202412,C,990,333,\n")
     idx = irs.read_index(text)
-    assert set(idx) == {"111", "333"}
-    assert idx["111"].ein == "123456789" and idx["111"].batch == "01A"
+    assert len(idx) == 2 and "111" in idx and "333" in idx and "222" not in idx
+    assert idx.batches == {"01A"}

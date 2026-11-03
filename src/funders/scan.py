@@ -28,14 +28,14 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
     progress = json.loads(progress_path.read_text()) if progress_path.exists() else {"done": []}
     done = set(progress["done"])
 
-    index = irs.read_index(get(irs.INDEX.format(year=year), None, None).decode("utf-8", "replace"))
-    log(f"{year}: {len(index):,} Form 990 and 990-PF returns in the index")
+    index = irs.read_index(get(irs.INDEX.format(year=year), None, None))
+    log(f"{year}: {len(index):,} Form 990 and 990-PF returns in the index (memory {irs.rss_mb()} MB)")
     try:
         batches = irs.published_zips(year, get)
     except urllib.error.HTTPError:
         batches = []
     if not batches:   # fall back to the batch names the index gives
-        batches = sorted({r.batch for r in index.values() if r.batch})
+        batches = sorted(index.batches)
     stats = {"archives": 0, "returns": 0, "parsed": 0, "matched": 0, "review": 0, "failed": 0}
 
     for batch in batches:
@@ -49,8 +49,8 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
         except (urllib.error.HTTPError, ValueError) as ex:
             log(f"  can't open {batch}: {ex}")
             continue
-        wanted = {m.object_id for m in arc.members} & set(index)
-        log(f"  {batch}: {len(wanted):,} returns to read")
+        wanted = {m.object_id for m in arc.members if m.object_id in index}
+        log(f"  {batch}: {len(wanted):,} returns to read (memory {irs.rss_mb()} MB)")
         found = []
         funders = {}
         n_in_archive = 0
@@ -58,10 +58,9 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
             stats["returns"] += 1
             n_in_archive += 1
             if n_in_archive % EVERY == 0:
-                log(f"    {n_in_archive:,} of {len(wanted):,} read, {len(found)} grants so far")
+                log(f"    {n_in_archive:,} of {len(wanted):,} read, {len(found)} grants so far (memory {irs.rss_mb()} MB)")
             if m.usize > BIG:
                 log(f"    large return {m.object_id} ({m.usize / 1e6:,.0f} MB), reading it as a stream")
-            row = index[m.object_id]
             source = f"{url}#{m.name.split('/')[-1]}"
             try:
                 if m.usize <= BIG:
@@ -84,19 +83,19 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
                 continue
             if not hits:
                 continue
-            ein = rg.funder_ein or row.ein
+            ein = rg.funder_ein
             for g, hit in hits:
                 stats[hit.status] += 1
                 found.append({
                     "status": hit.status, "reason": hit.reason, "seed": hit.seed.key, "seed_name": hit.seed.name,
-                    "funder_ein": ein, "funder_name": rg.funder_name or row.name,
-                    "tax_year": rg.tax_year, "tax_period_end": rg.tax_period_end, "return_type": rg.return_type or row.return_type,
+                    "funder_ein": ein, "funder_name": rg.funder_name,
+                    "tax_year": rg.tax_year, "tax_period_end": rg.tax_period_end, "return_type": rg.return_type,
                     "recipient": g.recipient, "recipient_ein": g.recipient_ein, "recipient_state": g.recipient_state,
                     "amount": g.amount, "purpose": g.purpose, "object_id": m.object_id, "source": source,
                 })
             funders[m.object_id] = {
-                "funder_ein": ein, "funder_name": rg.funder_name or row.name, "funder_state": rg.funder_state,
-                "return_type": rg.return_type or row.return_type, "tax_year": rg.tax_year,
+                "funder_ein": ein, "funder_name": rg.funder_name, "funder_state": rg.funder_state,
+                "return_type": rg.return_type, "tax_year": rg.tax_year,
                 "tax_period_end": rg.tax_period_end, "preselected_only": rg.preselected_only,
                 "total_paid": rg.total_paid, "grant_count": len(rg.amounts), "median_grant": rg.median_grant,
                 "recipient_states": len(rg.recipient_states), "object_id": m.object_id, "source": source,

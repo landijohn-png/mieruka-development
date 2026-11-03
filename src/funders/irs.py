@@ -71,27 +71,43 @@ def published_zips(year: int, get: Fetch = http_range) -> list[str]:
     return list(dict.fromkeys(names))
 
 
-@dataclass(frozen=True)
-class IndexRow:
-    object_id: str
-    ein: str
-    return_type: str
-    tax_period: str
-    name: str
-    batch: str
+@dataclass
+class Index:
+    """Which returns in a year's index are Form 990 or 990-PF. Kept as numbers, not rows:
+    a year has about 500,000 returns and the server has little memory to spare."""
+    wanted: set[int]
+    batches: set[str]
+
+    def __len__(self):
+        return len(self.wanted)
+
+    def __contains__(self, object_id) -> bool:
+        try:
+            return int(object_id) in self.wanted
+        except (TypeError, ValueError):
+            return False
 
 
-def read_index(text: str, return_types=("990", "990PF")) -> dict[str, IndexRow]:
-    """Index rows for the wanted return types, keyed by object id."""
-    out = {}
-    for row in csv.DictReader(io.StringIO(text)):
-        row = {k.strip().upper(): (v or "").strip() for k, v in row.items() if k}
-        rt = row.get("RETURN_TYPE", "").upper().replace("-", "")
-        if rt in return_types and row.get("OBJECT_ID"):
-            out[row["OBJECT_ID"]] = IndexRow(row["OBJECT_ID"], re.sub(r"\D", "", row.get("EIN", "")), rt,
-                                             row.get("TAX_PERIOD", ""), row.get("TAXPAYER_NAME", ""),
-                                             row.get("XML_BATCH_ID", "").upper())
-    return out
+def read_index(data: bytes | str, return_types=("990", "990PF")) -> Index:
+    """Read an IRS e-file index line by line, keeping only the object ids of wanted returns."""
+    stream = (io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace", newline="")
+              if isinstance(data, bytes) else io.StringIO(data, newline=""))
+    lines = iter(stream)
+    header = [h.strip().upper() for h in next(csv.reader([next(lines, "")]), [])]
+    try:
+        i_rt, i_oid = header.index("RETURN_TYPE"), header.index("OBJECT_ID")
+    except ValueError:
+        return Index(set(), set())
+    i_batch = header.index("XML_BATCH_ID") if "XML_BATCH_ID" in header else None
+    wanted, batches = set(), set()
+    for row in csv.reader(lines):
+        if len(row) <= max(i_rt, i_oid):
+            continue
+        if row[i_rt].strip().upper().replace("-", "") in return_types and row[i_oid].strip().isdigit():
+            wanted.add(int(row[i_oid]))
+            if i_batch is not None and len(row) > i_batch and row[i_batch].strip():
+                batches.add(row[i_batch].strip().upper())
+    return Index(wanted, batches)
 
 
 @dataclass(frozen=True)
@@ -105,6 +121,14 @@ class Member:
     @property
     def object_id(self) -> str:
         return self.name.split("/")[-1].split("_")[0]
+
+
+def rss_mb() -> int:
+    """Memory the process is using now, in MB (Linux; 0 elsewhere)."""
+    try:
+        return int(open("/proc/self/statm").read().split()[1]) * 4096 // 2**20
+    except (OSError, ValueError, IndexError):
+        return 0
 
 
 def directory(size: int, fetch: Callable[[int, int], bytes]) -> list[Member]:
