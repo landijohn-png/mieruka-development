@@ -1,0 +1,81 @@
+# Comparable organizations: anyone who funds these is a funder prospect for Mieruka.
+# From the Funder Persona Playbook (2026-11-02).
+#
+#   name           the organization's name
+#   aliases        other names it files under or has used
+#   eins           tax IDs, when confirmed from a source; a grant to this tax ID always counts
+#   state          two-letter state; a same-name recipient elsewhere goes to review
+#   purpose_words  for large organizations with many programs: a grant counts only if its
+#                  purpose mentions one of these words, otherwise it goes to review
+#   persona        the playbook persona this organization's funders most often fit
+#
+# Tax IDs left out are not yet confirmed. After the first run, `funders report` lists the tax IDs
+# recipients filed under each name, so they can be checked and added here.
+
+[charity_navigator]
+name = "Charity Navigator"
+eins = ["13-4148824"]          # Grantable and Impala profiles, Nov 2026
+state = "NJ"
+persona = "2"
+
+[candid]
+name = "Candid"
+aliases = ["Foundation Center", "GuideStar USA", "GuideStar"]
+state = "NY"
+persona = "2"
+
+[propublica]
+name = "ProPublica"
+aliases = ["Pro Publica"]
+state = "NY"
+persona = "2"
+
+[aspen_open_data]
+name = "Aspen Institute"
+note = "Large institute; only grants for nonprofit data or philanthropy work count."
+purpose_words = ["990", "OPEN DATA", "NONPROFIT DATA", "NONPROFIT SECTOR", "PHILANTHROP"]
+persona = "2"
+
+[givewell]
+name = "GiveWell"
+aliases = ["The Clear Fund", "Clear Fund"]
+persona = "5"
+
+[giving_what_we_can]
+name = "Giving What We Can"
+note = "Confirm the US entity name."
+persona = "5"
+
+[fast_forward]
+name = "Fast Forward"
+eins = ["46-4626500"]          # ffwd.org FAQ
+state = "CA"
+persona = "3"
+
+[techsoup]
+name = "TechSoup"
+aliases = ["TechSoup Global"]
+state = "CA"
+persona = "3"
+
+[nten]
+name = "Nonprofit Technology Enterprise Network"
+aliases = ["NTEN"]
+persona = "3"
+
+[grantmakers_western_pa]
+name = "Grantmakers of Western Pennsylvania"
+state = "PA"
+persona = "1"
+
+[philanthropy_network_philadelphia]
+name = "Philanthropy Network Greater Philadelphia"
+aliases = ["Delaware Valley Grantmakers"]
+state = "PA"
+persona = "1"
+
+[forbes_funds]
+name = "The Forbes Funds"
+aliases = ["Forbes Funds"]
+state = "PA"
+persona = "1"

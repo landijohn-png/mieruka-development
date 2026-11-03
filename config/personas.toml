@@ -1,0 +1,4 @@
+# Persona set by a person, by funder tax ID. These win over the automatic rules.
+# 1 PA regional · 2 sector infrastructure · 3 corporate tech · 4 wealth management / DAF · 5 individual effective giving
+[persona]
+# "56-2618866" = "4"

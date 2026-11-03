@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Scan results and downloads stay out of git.
+/data/*
+!/data/README.md
+*.csv
+*.jsonl
+*.db
+*.zip
+
+.env
+.env.*
+*.key
+*.pem

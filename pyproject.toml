@@ -1,0 +1,20 @@
+[project]
+name = "mieruka-development"
+version = "0.1.0"
+description = "Project Mieruka's own fundraising tools: find funders of organizations like Mieruka from IRS filings."
+requires-python = ">=3.11"
+dependencies = ["inflate64>=1.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
