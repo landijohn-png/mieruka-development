@@ -143,15 +143,36 @@ def directory(size: int, fetch: Callable[[int, int], bytes]) -> list[Member]:
     return out
 
 
+FEED = 256 * 1024          # compressed bytes handed to the decompressor at a time
+OUT_MAX = 4 * 1024 * 1024  # most decompressed bytes produced per step (XML shrinks 10-20x when zipped)
+
+
 def _decompressor(method: int):
+    """A function turning a piece of compressed data into a series of bounded decompressed chunks,
+    so a huge return never has to be unpacked in one go."""
     if method == 0:
-        return lambda b: b
+        return lambda b: iter([b])
     if method == 8:
         d = zlib.decompressobj(-15)
-        return d.decompress
+
+        def inflate(data):
+            buf = data
+            while buf:
+                out = d.decompress(buf, OUT_MAX)
+                if out:
+                    yield out
+                buf = d.unconsumed_tail
+        return inflate
     if method == 9:   # Deflate64, used in some IRS archives (2025 and later)
         import inflate64
-        return inflate64.Inflater().inflate
+        inf = inflate64.Inflater()
+
+        def inflate(data):
+            for i in range(0, len(data), FEED):
+                out = inf.inflate(data[i:i + FEED])
+                if out:
+                    yield out
+        return inflate
     raise ValueError(f"Unsupported compression method {method}.")
 
 
@@ -197,10 +218,10 @@ class Archive:
         if m.csize == 0:
             return
         if m.csize <= self.window:
-            yield inflate(self._span(start, start + m.csize - 1))
+            yield from inflate(self._span(start, start + m.csize - 1))
             return
         pos, stop = start, start + m.csize
         while pos < stop:
             end = min(stop, pos + self.window) - 1
-            yield inflate(self._span(pos, end))
+            yield from inflate(self._span(pos, end))
             pos = end + 1

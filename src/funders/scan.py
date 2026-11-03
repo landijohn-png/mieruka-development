@@ -17,7 +17,8 @@ from funders import grants as G
 from funders import irs
 from funders.match import Matcher
 
-BIG = 64 * 1024 * 1024    # returns larger than this (uncompressed) are parsed as a stream, no quick test
+BIG = 24 * 1024 * 1024    # returns larger than this (uncompressed) are parsed as a stream, no quick test
+EVERY = 5000              # log progress inside an archive every this many returns
 
 
 def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_of=irs.http_size,
@@ -52,8 +53,14 @@ def scan_year(year: int, matcher: Matcher, out: Path, get=irs.http_range, size_o
         log(f"  {batch}: {len(wanted):,} returns to read")
         found = []
         funders = {}
+        n_in_archive = 0
         for m, chunks in arc.stream(wanted):
             stats["returns"] += 1
+            n_in_archive += 1
+            if n_in_archive % EVERY == 0:
+                log(f"    {n_in_archive:,} of {len(wanted):,} read, {len(found)} grants so far")
+            if m.usize > BIG:
+                log(f"    large return {m.object_id} ({m.usize / 1e6:,.0f} MB), reading it as a stream")
             row = index[m.object_id]
             source = f"{url}#{m.name.split('/')[-1]}"
             try:
