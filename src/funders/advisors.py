@@ -133,9 +133,16 @@ def load_targets(path) -> list[dict]:
         return [r for r in csv.DictReader(f) if r.get("firm")]
 
 
+SOCIAL = re.compile(r"(^|\.)(linkedin|youtube|facebook|twitter|x|instagram|tiktok|vimeo|yelp|google)\.com(/|$)|^(youtu\.be|x\.com|bit\.ly)(/|$)")
+
+
 def _site(v: str) -> str:
+    """The firm's own site. The SEC file gives one address per firm, sometimes a social page: those are dropped."""
     v = (v or "").strip()
-    return "" if v.lower() in ("", "n/a", "none") else re.sub(r"^https?://", "", v, flags=re.I).rstrip("/").lower()
+    if v.lower() in ("", "n/a", "none"):
+        return ""
+    v = re.sub(r"^https?://", "", v, flags=re.I).rstrip("/").lower()
+    return "" if SOCIAL.search(v.split("/")[0] + "/") else v
 
 
 def build(sec_file, out_dir, targets: str | None = None, counties=tuple(places.COUNTIES), get=irs.http_range,

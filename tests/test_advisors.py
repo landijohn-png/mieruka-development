@@ -43,3 +43,10 @@ def test_build_keeps_local_registered_advisers_and_the_list(tmp_path):
     assert small["call_order"] == "A" and small["on_targets_list"] == "yes" and small["why"] == "Owner reachable"  # list wins
     assert rows["Trustmont Advisory Group"]["list_source"] == "Unbiased"           # kept though the SEC file lacks it
     assert res["list_matched"] == 1 and res["list_only"] == 1
+
+
+def test_social_pages_are_not_a_firm_website():
+    assert advisors._site("https://www.youtube.com/channel/UCv") == ""
+    assert advisors._site("www.linkedin.com/company/x") == ""
+    assert advisors._site("https://www.Gibsoncapital.com/") == "www.gibsoncapital.com"
+    assert advisors._site("https://www.xcelfinancial.com") == "www.xcelfinancial.com"
