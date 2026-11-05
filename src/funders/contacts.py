@@ -34,6 +34,12 @@ KEEP_WHOLE = {"Filer", "BusinessOfficerGrp", "ApplicationSubmissionInfoGrp", "Of
 STOP_AFTER = {"IRS990", "IRS990PF"}     # contact details sit in the main form; schedules after it are skipped
 FEED = 256 * 1024
 MAX_OFFICERS = 15
+# a charity's own figures and words, kept when present (Form 990 Part I and Part III); funders ignore them
+FACTS = {"CYTotalRevenueAmt", "CYContributionsGrantsAmt", "CYTotalExpensesAmt", "CYProgramServiceRevenueAmt",
+         "ActivityOrMissionDesc", "MissionDesc", "TaxPeriodEndDt", "TotalEmployeeCnt", "TotalVolunteersCnt"}
+
+# Part X groups for net assets a donor restricted (since 2018), and the older temporarily/permanently restricted ones
+RESTRICTED = {"DonorRestrictionNetAssetsGrp", "TemporarilyRstrNetAssetsGrp", "PermanentlyRstrNetAssetsGrp"}
 
 CONTACT_FIELDS = ["ein", "funder", "kind", "name", "title", "phone", "email", "address", "notes", "tax_year", "source"]
 INFO_FIELDS = ["ein", "funder", "phone", "website", "preselected_only", "how_to_apply", "deadlines", "restrictions",
@@ -75,7 +81,7 @@ def _address(el) -> str:
 def read_contacts(chunks) -> dict:
     """Parse one return as a stream and return its contact details."""
     out = {"phone": "", "website": "", "signer": None, "grants": [], "officers": [], "preselected_only": None,
-           "tax_year": "", "return_type": ""}
+           "tax_year": "", "return_type": "", "facts": {}}
     parser = ET.XMLPullParser(events=("start", "end"))
     stack, inside, done = [], 0, False
 
@@ -109,6 +115,14 @@ def read_contacts(chunks) -> dict:
             out["officers"].append({"name": _readable(_first(el, "PersonNm", "BusinessNameLine1Txt")),
                                     "title": _first(el, "TitleTxt"),
                                     "officer": bool(flags & {"OfficerInd", "KeyEmployeeInd", "HighestCompensatedEmployeeInd"})})
+        elif t == "EOYAmt" and stack and _tag(stack[-1]) in RESTRICTED and (el.text or "").strip():
+            # net assets with donor restrictions at year end (Part X): gifts a donor tied to a purpose or a time
+            try:
+                out["facts"]["RestrictedNetAssetsEOY"] = out["facts"].get("RestrictedNetAssetsEOY", 0) + int(float(el.text))
+            except ValueError:
+                pass
+        elif t in FACTS and t not in out["facts"] and (el.text or "").strip():
+            out["facts"][t] = " ".join(el.text.split())
         elif t in STOP_AFTER:
             done = True
 
@@ -155,12 +169,16 @@ class _Archives:
             time.sleep(self.pause)
         return data
 
-    def chunks(self, source: str):
-        url, _, name = source.partition("#")
+    def directory(self, url: str) -> dict:
+        """An archive's table of contents (member file name -> where it sits), read once."""
         if url not in self.dirs:
             size = self.size_of(url)
             self.dirs[url] = {m.name.split("/")[-1]: m for m in irs.directory(size, lambda a, b: self._fetch(url, a, b))}
-        m = self.dirs[url].get(name)
+        return self.dirs[url]
+
+    def chunks(self, source: str):
+        url, _, name = source.partition("#")
+        m = self.directory(url).get(name)
         if m is None:
             raise KeyError(f"{name} is not in {url.rsplit('/', 1)[-1]}")
         head = self._fetch(url, m.offset, m.offset + 29)

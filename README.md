@@ -71,3 +71,43 @@ Set any funder's persona by tax ID in `config/personas.toml`.
 - Schedule I lists only grants over $5,000, so small gifts from public charities and DAFs are missed.
 - IRS e-file data runs 12 to 18 months behind; the newest grants aren't there yet.
 - Some foundations attach grant lists as PDFs instead of filing them line by line; those are missed.
+
+## Charities and advisors (on John's PC)
+
+Two more lists, built the same way from public filings, for the Mieruka console's Charities and Advisors
+sections. Light enough for the PC; the test server stays Mieruka-only.
+
+```
+Build Lists.bat                     (in C:\Mieruka\mieruka-development: sets up Python the first time, then builds both lists)
+
+python -m funders charities --out C:\Mieruka\Data\charities --targets C:\Mieruka\Data\outreach_targets_charities.csv
+python -m funders advisors --sec-file C:\Mieruka\Data\advisors --out C:\Mieruka\Data\advisors --targets C:\Mieruka\Data\outreach_targets_advisors.csv
+```
+
+**Charities** come from the IRS list of exempt organizations in Pennsylvania (eo_pa.csv) and the Census ZIP-to-county
+file: public charities in Westmoreland, Allegheny and the seven counties around them with revenue $500K to $50M
+(private foundations and grantmakers are funders, not pilot charities). The first 400 have their latest Form 990 read
+for phone, website, mission, revenue, contributions and the people it lists.
+
+**Advisors** come from the SEC's monthly list of registered investment advisers. The SEC asks automated downloads to
+give a contact address, so download it by hand: on sec.gov, "Information About Registered Investment Advisers and
+Exempt Reporting Advisers", the newest **Registered Investment Advisers** ZIP, saved into `C:\Mieruka\Data\advisors`.
+Firms registered only with Pennsylvania (most small ones) aren't in it; the targets list and your network cover those.
+
+**Call order** (A call first, then B, then C) is John's outreach plan, from stated facts only, never a judgment of a
+charity's work, and never shown to a charity or in the product. Rows from the outreach targets list keep the order
+and notes given there.
+
+| List | A | B |
+|---|---|---|
+| Charities | Westmoreland or Allegheny, revenue $1M–$25M, 35%+ of revenue from contributions | In the counties, 15%+ from contributions |
+| Advisors | Westmoreland or Allegheny, 25+ high-net-worth clients, $100M–$5B under management | In the counties, 10+ high-net-worth clients |
+
+| File | What it holds |
+|---|---|
+| `charities.csv` | Each charity in call order, why (the facts), cause, revenue, contributions, net assets with donor restrictions (the gifts Mieruka reports on), phone, website, mission, filing link |
+| `charity_contacts.csv` | People named on its latest 990: the officer who signed, executive and development leads first |
+| `advisors.csv` | Each firm in call order, why, SEC number, assets, clients by type, phone, website, public record link |
+| `advisor_contacts.csv` | The compliance officer the firm's Form ADV names, when the SEC file includes it |
+
+Families are never listed or looked up: they come to Mieruka through their advisor.

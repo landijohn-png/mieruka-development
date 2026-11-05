@@ -25,3 +25,9 @@ def test_nothing_from_the_donor_product_is_imported():
     for p in (ROOT / "src").rglob("*.py"):
         text = p.read_text()
         assert "import mieruka" not in text and "from mieruka" not in text, p.name
+
+
+def test_families_are_never_listed_or_looked_up():
+    # Families come to Mieruka through their advisor; no tool here builds a list of them.
+    names = [p.stem.lower() for p in (ROOT / "src").rglob("*.py")]
+    assert not any("famil" in n or "donor" in n for n in names), names

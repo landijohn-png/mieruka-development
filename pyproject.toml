@@ -1,9 +1,9 @@
 [project]
 name = "mieruka-development"
 version = "0.1.0"
-description = "Project Mieruka's own fundraising tools: find funders of organizations like Mieruka from IRS filings."
+description = "Project Mieruka's own outreach tools: funders, charities and advisors to contact, from public filings."
 requires-python = ">=3.11"
-dependencies = ["inflate64>=1.0"]
+dependencies = ["inflate64>=1.0", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
